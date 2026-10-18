@@ -1,341 +1,136 @@
-<!DOCTYPE html><html lang="en">
+
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Unlimited Wi-Fi Bundles</title>  <style>
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f4f4;
-      margin: 0;
-      padding: 0;
-    }
-
-    .header {
-      background: #e40000;
-      color: white;
-      text-align: center;
-      padding: 25px 15px;
-    }
-
-    .logo {
-      font-size: 32px;
-      font-weight: bold;
-      letter-spacing: 1px;
-      margin-bottom: 8px;
-    }
-
-    .header h1 {
-      margin: 5px 0;
-      font-size: 25px;
-    }
-
-    .header p {
-      margin: 8px 0 0;
-      color: white;
-    }
-
-    .container {
-      max-width: 700px;
-      margin: 25px auto;
-      padding: 20px;
-    }
-
-    .phone-box {
-      background: white;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-      margin-bottom: 20px;
-    }
-
-    .phone-input {
-      width: 100%;
-      padding: 14px;
-      font-size: 17px;
-      border: 1px solid #ccc;
-      border-radius: 7px;
-      outline: none;
-    }
-
-    .phone-input:focus {
-      border-color: #e40000;
-    }
-
-    .section-title {
-      text-align: center;
-      font-size: 21px;
-      font-weight: bold;
-      margin: 25px 0 15px;
-      color: #222;
-    }
-
-    .bundles {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 14px;
-    }
-
-    .bundle {
-      background: white;
-      border-radius: 12px;
-      padding: 20px 15px;
-      text-align: center;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-      border: 2px solid transparent;
-      transition: 0.2s;
-    }
-
-    .bundle:hover {
-      border-color: #e40000;
-      transform: translateY(-2px);
-    }
-
-    .duration {
-      font-size: 19px;
-      font-weight: bold;
-      color: #222;
-      margin-bottom: 8px;
-    }
-
-    .unlimited {
-      color: #e40000;
-      font-weight: bold;
-      font-size: 16px;
-      margin-bottom: 12px;
-    }
-
-    .price {
-      font-size: 25px;
-      font-weight: bold;
-      color: #e40000;
-      margin-bottom: 15px;
-    }
-
-    .bundle button {
-      width: 100%;
-      padding: 12px;
-      background: #e40000;
-      color: white;
-      border: none;
-      border-radius: 7px;
-      font-size: 16px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    .bundle button:hover {
-      background: #c90000;
-    }
-
-    .status {
-      background: white;
-      margin-top: 20px;
-      padding: 15px;
-      border-radius: 8px;
-      text-align: center;
-      font-size: 15px;
-      color: #444;
-    }
-
-    .notice {
-      text-align: center;
-      margin-top: 20px;
-      color: #666;
-      font-size: 13px;
-    }
-
-    @media (max-width: 500px) {
-      .container {
-        padding: 12px;
-      }
-
-      .bundles {
-        grid-template-columns: 1fr 1fr;
-      }
-
-      .price {
-        font-size: 22px;
-      }
-    }
-  </style></head><body>  <div class="header">
-    <div class="logo">YOUR Wi-Fi</div>
-    <h1>Unlimited Wi-Fi Bundles</h1>
-    <p>Choose your preferred unlimited package</p>
-  </div>  <div class="container"><div class="phone-box">
-  <input
-    id="phone"
-    class="phone-input"
-    placeholder="Enter phone number (07XXXXXXXX or 01XXXXXXXX)"
-    type="tel"
-  >
-</div>
-
-<div class="section-title">
-  Select Unlimited Bundle
-</div>
-
-<div class="bundles">
-
-  <div class="bundle">
-    <div class="duration">1 Hour</div>
-    <div class="unlimited">UNLIMITED</div>
-    <div class="price">Ksh 20</div>
-    <button onclick="buyBundle(20, '1 Hour')">
-      BUY NOW
-    </button>
-  </div>
-
-  <div class="bundle">
-    <div class="duration">23.5 Hours</div>
-    <div class="unlimited">UNLIMITED</div>
-    <div class="price">Ksh 120</div>
-    <button onclick="buyBundle(120, '23.5 Hours')">
-      BUY NOW
-    </button>
-  </div>
-
-  <div class="bundle">
-    <div class="duration">48 Hours</div>
-    <div class="unlimited">UNLIMITED</div>
-    <div class="price">Ksh 280</div>
-    <button onclick="buyBundle(280, '48 Hours')">
-      BUY NOW
-    </button>
-  </div>
-
-  <div class="bundle">
-    <div class="duration">7 Days</div>
-    <div class="unlimited">UNLIMITED</div>
-    <div class="price">Ksh 599</div>
-    <button onclick="buyBundle(599, '7 Days')">
-      BUY NOW
-    </button>
-  </div>
-
-  <div class="bundle">
-    <div class="duration">30 Days</div>
-    <div class="unlimited">UNLIMITED</div>
-    <div class="price">Ksh 1,999</div>
-    <button onclick="buyBundle(1999, '30 Days')">
-      BUY NOW
-    </button>
-  </div>
-
-</div>
-
-<div id="status" class="status"></div>
-
-<div class="notice">
-  Payments are processed through M-Pesa.
-</div>
-
-  </div><script>
-
-async function buyBundle(amount, duration) {
-
-  const status = document.getElementById('status');
-
-  let phone = document.getElementById('phone').value.trim();
-
-  if (!phone) {
-    alert('Enter your phone number');
-    return;
-  }
-
-  // Validate Kenyan 07XXXXXXXX or 01XXXXXXXX
-  if (!/^(07|01)\d{8}$/.test(phone)) {
-    alert(
-      'Enter phone number in format 07XXXXXXXX or 01XXXXXXXX'
-    );
-    return;
-  }
-
-  // Convert 07XXXXXXXX / 01XXXXXXXX to 254XXXXXXXXX
-  phone = '254' + phone.slice(1);
-
-  status.innerText =
-    `Sending M-Pesa payment request for Ksh ${amount}...`;
-
-  try {
-
-    const res = await fetch(
-      'https://perontips-backend.onrender.com/pay',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          phone: phone,
-          amount: amount,
-          bundle: duration
-        })
-      }
-    );
-
-    const data = await res.json();
-
-    if (data.ResponseCode == 0) {
-
-      status.innerText =
-        `Check your phone and enter your M-Pesa PIN to pay Ksh ${amount}.`;
-
-      pollStatus(phone, duration);
-
-    } else {
-
-      status.innerText =
-        'Failed to send M-Pesa payment request. Please try again.';
-
-    }
-
-  } catch (error) {
-
-    console.error(error);
-
-    status.innerText =
-      'Connection error. Please try again.';
-
-  }
-}
-
-
-async function pollStatus(phone, duration) {
-
-  const status = document.getElementById('status');
-
-  const interval = setInterval(async () => {
-
-    try {
-
-      const res = await fetch(
-        `https://perontips-backend.onrender.com/status?phone=${phone}`
-      );
-
-      const data = await res.json();
-
-      if (data.status === 'Success') {
-
-        clearInterval(interval);
-
-        status.innerText =
-          `✅ Payment successful! Your ${duration} unlimited Wi-Fi bundle is now active.`;
-
-      }
-
-    } catch (error) {
-
-      console.error(error);
-
-    }
-
-  }, 3000);
-
-}
-
-</script></body>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#063b32">
+  <meta name="description" content="SangPoint Connect Wi-Fi packages and M-Pesa payments.">
+  <title>SangPoint Connect | Wi-Fi</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark">S</div>
+    <div class="brand-copy">
+      <h1>SangPoint <span>Connect</span></h1>
+      <p>Your Connection Point</p>
+    </div>
+    <div class="status-pill">● Wi-Fi packages</div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <p class="eyebrow">FAST • SIMPLE • CONNECTED</p>
+      <h2>Choose your<br><span>internet package</span></h2>
+      <p class="hero-text">
+        Select a package, enter your M-Pesa phone number and request
+        a payment prompt on your phone.
+      </p>
+    </section>
+
+    <section>
+      <div class="section-heading">
+        <h3>Available packages</h3>
+        <p>Choose the time that works for you.</p>
+      </div>
+
+      <div class="packages">
+        <button class="package-card" type="button" data-package="hour">
+          <span class="package-tag">SHORT SESSION</span>
+          <span class="package-price">KSh 5</span>
+          <span class="package-duration">1 hour</span>
+          <span class="package-choose">Choose package →</span>
+        </button>
+
+        <button class="package-card featured" type="button" data-package="ten-hours">
+          <span class="package-tag">POPULAR</span>
+          <span class="package-price">KSh 20</span>
+          <span class="package-duration">10 hours</span>
+          <span class="package-choose">Choose package →</span>
+        </button>
+
+        <button class="package-card" type="button" data-package="five-days">
+          <span class="package-tag">MULTI-DAY</span>
+          <span class="package-price">KSh 100</span>
+          <span class="package-duration">5 days</span>
+          <span class="package-choose">Choose package →</span>
+        </button>
+
+        <button class="package-card" type="button" data-package="six-days">
+          <span class="package-tag">BEST DURATION</span>
+          <span class="package-price">KSh 120</span>
+          <span class="package-duration">6 days</span>
+          <span class="package-choose">Choose package →</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="payment-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">SECURE PAYMENT</p>
+          <h3>Pay with M-Pesa</h3>
+        </div>
+        <div class="mpesa-mark">M-PESA</div>
+      </div>
+
+      <div class="selected-package">
+        <span class="summary-label">Selected package</span>
+        <strong id="selected-name">Choose a package above</strong>
+        <strong id="selected-price"></strong>
+      </div>
+
+      <form id="payment-form">
+        <label for="phone">M-Pesa phone number</label>
+        <input
+          id="phone"
+          name="phone"
+          type="tel"
+          inputmode="tel"
+          autocomplete="tel"
+          placeholder="07XXXXXXXX or 01XXXXXXXX"
+          maxlength="13"
+          required
+        >
+        <p class="field-help">
+          Use the number that should receive the M-Pesa prompt.
+        </p>
+
+        <button class="pay-button" id="pay-button" type="submit" disabled>
+          <span>Request M-Pesa prompt</span>
+          <span>→</span>
+        </button>
+      </form>
+
+      <div class="notice" id="status-message" role="status" aria-live="polite">
+        Select a package to continue. Never share your M-Pesa PIN.
+      </div>
+
+      <div class="security-note">
+        🔒 SangPoint will never ask you to type your M-Pesa PIN on this website.
+      </div>
+    </section>
+
+    <section class="how-it-works">
+      <h3>How it works</h3>
+      <ol>
+        <li>1. Choose your Wi-Fi package.</li>
+        <li>2. Enter your M-Pesa phone number.</li>
+        <li>3. Approve the payment prompt on your phone.</li>
+        <li>4. Wait for payment verification and Wi-Fi access.</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer>
+    <strong>SangPoint Connect</strong>
+    <p>Your Connection Point</p>
+    <p class="footer-small">
+      Internet access activates only after the server verifies payment.
+    </p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
 </html>
