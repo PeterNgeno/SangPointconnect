@@ -1,131 +1,121 @@
+document.addEventListener('DOMContentLoaded', async () => {
+  let section = parseInt(localStorage.getItem('quizSection')) || 1;
+  let isRetry = localStorage.getItem('quizRetry') === 'true';
+  let phone = localStorage.getItem('quizPhone') || '';
+  const contentDiv = document.getElementById('content');
 
-/*
- * SangPoint Connect frontend.
- * Payment integration is not active yet.
- * Do not use the existing Peron Tips /pay route for Wi-Fi payments.
- */
+  async function getAmountFromSheet(section) {
+    try {
+      const sheetURL =
+        'https://docs.google.com/spreadsheets/d/1Ce3AZo4boaU91Enar8EwHN10ep9_lqHgHewSXHA0avo/gviz/tq?sheet=sheet1&tqx=out:json';
+      const res = await fetch(sheetURL);
+      const text = await res.text();
+      const json = JSON.parse(text.substr(47).slice(0, -2));
+      const rows = json.table.rows;
+      if (!rows || !rows.length) return 5;
 
-const PACKAGES = {
-  "hour": {
-    id: "hour",
-    name: "1 hour",
-    amount: 5
-  },
-  "ten-hours": {
-    id: "ten-hours",
-    name: "10 hours",
-    amount: 20
-  },
-  "five-days": {
-    id: "five-days",
-    name: "5 days",
-    amount: 100
-  },
-  "six-days": {
-    id: "six-days",
-    name: "6 days",
-    amount: 120
-  }
-};
-
-let selectedPackage = null;
-
-const packageButtons = document.querySelectorAll(".package-card");
-const selectedName = document.getElementById("selected-name");
-const selectedPrice = document.getElementById("selected-price");
-const phoneInput = document.getElementById("phone");
-const payButton = document.getElementById("pay-button");
-const statusMessage = document.getElementById("status-message");
-const paymentForm = document.getElementById("payment-form");
-
-function setStatus(message, isError = false) {
-  statusMessage.textContent = message;
-  statusMessage.className = isError
-    ? "notice error"
-    : "notice";
-}
-
-function normalizeKenyanPhone(raw) {
-  const digits = raw.replace(/[^\d+]/g, "").replace(/^\+/, "");
-
-  if (/^0[17]\d{8}$/.test(digits)) {
-    return "254" + digits.slice(1);
+      const colStart = (section - 1) * 5;
+      const amount = parseInt(rows[0].c[colStart + 3]?.v) || 5;
+      return amount;
+    } catch (err) {
+      console.error(err);
+      return 5;
+    }
   }
 
-  if (/^254[17]\d{8}$/.test(digits)) {
-    return digits;
+  function showSectionSelector() {
+    contentDiv.innerHTML = `
+      <h2 style="font-size:26px;">Select Quiz Section</h2>
+      <select id="section-select" style="width:100%; padding:20px; font-size:22px; margin-bottom:20px;">
+        ${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">Section ${String.fromCharCode(65 + i)}</option>`).join('')}
+      </select>
+      <button id="select-btn" style="width:100%; padding:20px; font-size:22px; background:#2ecc71; color:white; border:none; border-radius:6px; cursor:pointer;">Continue</button>
+    `;
+
+    document.getElementById('select-btn').onclick = () => {
+      section = parseInt(document.getElementById('section-select').value);
+      localStorage.setItem('quizSection', section);
+      showPayment();
+    };
   }
 
-  if (/^[17]\d{8}$/.test(digits)) {
-    return "254" + digits;
+  async function showPayment() {
+    const amount = await getAmountFromSheet(section);
+    contentDiv.innerHTML = `
+      <h2>Section ${String.fromCharCode(64 + section)}</h2>
+      <p><b>Amount:</b> Ksh ${amount}</p>
+      <input id="phone-input" placeholder="07XXXXXXXX" value="${phone}" style="width:100%; padding:22px; font-size:22px; margin-bottom:15px;">
+      <button id="pay-btn" style="width:100%; padding:22px; font-size:22px; background:#27ae60; color:white; border:none; border-radius:6px; cursor:pointer;">Pay Now</button>
+      <div id="payment-status" style="margin-top:15px; font-size:18px;"></div>
+    `;
+    document.getElementById('pay-btn').onclick = initiatePayment.bind(null, amount);
   }
 
-  return null;
-}
+  async function initiatePayment(amount) {
+    const raw = document.getElementById('phone-input').value.trim();
+    if (!raw) return alert('Enter phone number');
+    phone = raw.startsWith('07') ? '254' + raw.slice(1) : raw;
+    localStorage.setItem('quizPhone', raw);
 
-packageButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    const chosen = PACKAGES[button.dataset.package];
+    showLoader("Wait… enter M-Pesa PIN on your phone");
 
-    if (!chosen) return;
-
-    selectedPackage = chosen;
-
-    packageButtons.forEach((item) => {
-      const active = item === button;
-      item.classList.toggle("selected", active);
-      item.setAttribute("aria-pressed", String(active));
+    await fetch('https://perontips-backend.onrender.com/pay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, amount })
     });
 
-    selectedName.textContent = chosen.name;
-    selectedPrice.textContent = "KSh " + chosen.amount;
-    payButton.disabled = false;
-
-    setStatus(
-      "Package selected. Enter your M-Pesa number to continue."
-    );
-  });
-});
-
-paymentForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-
-  if (!selectedPackage) {
-    setStatus("Please select a package first.", true);
-    return;
+    pollPaymentStatus();
   }
 
-  const phone = normalizeKenyanPhone(phoneInput.value.trim());
-
-  if (!phone) {
-    setStatus(
-      "Enter a valid Kenyan mobile number, e.g. 0712345678 or 0112345678.",
-      true
-    );
-    phoneInput.focus();
-    return;
+  function pollPaymentStatus() {
+    const interval = setInterval(async () => {
+      const res = await fetch(`https://perontips-backend.onrender.com/status?phone=${phone}`);
+      const data = await res.json();
+      if (data.status === 'Success') {
+        clearInterval(interval);
+        localStorage.setItem('quizPaid', 'true');
+        localStorage.setItem('quizExpiry', Date.now() + 24*60*60*1000);
+        showLoader("Payment confirmed! Don’t leave this page. Redirecting...");
+        setTimeout(() => window.location.href='quiz.html', 3000);
+      }
+    }, 3000);
   }
 
-  /*
-   * Payment is deliberately not initiated yet.
-   *
-   * Next, we will connect this page to separate SangPoint endpoints
-   * on Render. The backend must:
-   * 1. Determine the price from the package ID.
-   * 2. Initiate the STK Push.
-   * 3. Verify Safaricom's payment callback.
-   * 4. Prevent duplicate payment/access processing.
-   * 5. Authorize the customer's MikroTik HotSpot session.
-   *
-   * Never trust browser-side payment success and never put Daraja
-   * consumer secrets or passkeys in frontend files.
-   */
+  window.showLoader = function(message="Processing payment...") {
+    contentDiv.innerHTML = `
+      <div style="text-align:center; padding:40px;">
+        <img src="16cc5661a9b0e90_file_00000000862461f9aa3ca12f21fda879_wm.png" style="width:80px; animation:spin 2s linear infinite;">
+        <p id="loader-text" style="margin-top:20px; font-size:18px; font-weight:bold;">${message}</p>
+      </div>
+      <style>
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      </style>
+    `;
 
-  setStatus(
-    "Your package is KSh " + selectedPackage.amount +
-    " for " + selectedPackage.name +
-    ". M-Pesa is not connected yet. The SangPoint backend and " +
-    "MikroTik access integration must be configured first.",
-    true
-  );
+    const loaderMessages = [
+      "Wait… enter M-Pesa PIN on your phone",
+      "Confirming payment…",
+      "Payment received",
+      "Don’t leave this page",
+      "Redirecting you to questions…"
+    ];
+
+    let msgIndex=0, charIndex=0;
+    if (window.typingTimer) clearInterval(window.typingTimer);
+
+    function typeMessage() {
+      const textEl = document.getElementById('loader-text');
+      const message = loaderMessages[msgIndex];
+      if (charIndex <= message.length) {
+        textEl.innerHTML = message.substring(0,charIndex)+'<span class="cursor">|</span>';
+        charIndex++;
+      } else {
+        setTimeout(()=>{charIndex=0; msgIndex=(msgIndex+1)%loaderMessages.length;},1200);
+      }
+    }
+    window.typingTimer = setInterval(typeMessage,80);
+  }
+
+  showSectionSelector();
 });
