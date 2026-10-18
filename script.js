@@ -1,72 +1,131 @@
-document.addEventListener('DOMContentLoaded', () => {
-  const contentDiv = document.getElementById('content');
 
-  let section = parseInt(localStorage.getItem('quizSection')) || 1;
-  let isRetry = localStorage.getItem('quizRetry') === 'true';
-  let phone = localStorage.getItem('quizPhone') || '';
+/*
+ * SangPoint Connect frontend.
+ * Payment integration is not active yet.
+ * Do not use the existing Peron Tips /pay route for Wi-Fi payments.
+ */
 
-  function showSectionSelector() {
-    contentDiv.innerHTML = `
-      <h2 style="font-size:36px;">Select Quiz Section</h2>
+const PACKAGES = {
+  "hour": {
+    id: "hour",
+    name: "1 hour",
+    amount: 5
+  },
+  "ten-hours": {
+    id: "ten-hours",
+    name: "10 hours",
+    amount: 20
+  },
+  "five-days": {
+    id: "five-days",
+    name: "5 days",
+    amount: 100
+  },
+  "six-days": {
+    id: "six-days",
+    name: "6 days",
+    amount: 120
+  }
+};
 
-      <select id="section-select"
-        style="font-size:28px;width:100%;padding:12px;">
-        ${Array.from({ length: 10 }, (_, i) =>
-          `<option value="${i + 1}">
-            Section ${String.fromCharCode(65 + i)}
-          </option>`
-        ).join('')}
-      </select>
+let selectedPackage = null;
 
-      <button id="go"
-        style="font-size:28px;width:100%;margin-top:20px;">
-        Continue
-      </button>
-    `;
+const packageButtons = document.querySelectorAll(".package-card");
+const selectedName = document.getElementById("selected-name");
+const selectedPrice = document.getElementById("selected-price");
+const phoneInput = document.getElementById("phone");
+const payButton = document.getElementById("pay-button");
+const statusMessage = document.getElementById("status-message");
+const paymentForm = document.getElementById("payment-form");
 
-    document.getElementById('go').onclick = () => {
-      section = parseInt(document.getElementById('section-select').value);
-      localStorage.setItem('quizSection', section);
-      showPayment();
-    };
+function setStatus(message, isError = false) {
+  statusMessage.textContent = message;
+  statusMessage.className = isError
+    ? "notice error"
+    : "notice";
+}
+
+function normalizeKenyanPhone(raw) {
+  const digits = raw.replace(/[^\d+]/g, "").replace(/^\+/, "");
+
+  if (/^0[17]\d{8}$/.test(digits)) {
+    return "254" + digits.slice(1);
   }
 
-  function showPayment() {
-    const amount = isRetry ? 20 : (section <= 5 ? 5 : 10);
-
-    contentDiv.innerHTML = `
-      <h2 style="font-size:36px;">
-        Section ${String.fromCharCode(64 + section)}
-      </h2>
-
-      <p style="font-size:28px;">Pay Ksh ${amount}</p>
-
-      <input id="phone" value="${phone}"
-        placeholder="07XXXXXXXX"
-        style="font-size:28px;width:100%;padding:12px;">
-
-      <button id="pay"
-        style="font-size:28px;width:100%;margin-top:15px;">
-        Pay
-      </button>
-
-      <div id="status" style="font-size:26px;margin-top:10px;"></div>
-    `;
-
-    document.getElementById('pay').onclick = () => {
-      const raw = document.getElementById('phone').value.trim();
-      if (!/^07\d{8}$/.test(raw)) return alert("Invalid phone");
-
-      localStorage.setItem('quizPhone', raw);
-      localStorage.setItem('quizRetry', 'false');
-
-      document.getElementById('status').innerText = "Processing…";
-
-      setTimeout(() => {
-        location.href = "quiz.html";
-      }, 1500);
-    };
+  if (/^254[17]\d{8}$/.test(digits)) {
+    return digits;
   }
 
-  showSectionSelector();
+  if (/^[17]\d{8}$/.test(digits)) {
+    return "254" + digits;
+  }
+
+  return null;
+}
+
+packageButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const chosen = PACKAGES[button.dataset.package];
+
+    if (!chosen) return;
+
+    selectedPackage = chosen;
+
+    packageButtons.forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("selected", active);
+      item.setAttribute("aria-pressed", String(active));
+    });
+
+    selectedName.textContent = chosen.name;
+    selectedPrice.textContent = "KSh " + chosen.amount;
+    payButton.disabled = false;
+
+    setStatus(
+      "Package selected. Enter your M-Pesa number to continue."
+    );
+  });
+});
+
+paymentForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  if (!selectedPackage) {
+    setStatus("Please select a package first.", true);
+    return;
+  }
+
+  const phone = normalizeKenyanPhone(phoneInput.value.trim());
+
+  if (!phone) {
+    setStatus(
+      "Enter a valid Kenyan mobile number, e.g. 0712345678 or 0112345678.",
+      true
+    );
+    phoneInput.focus();
+    return;
+  }
+
+  /*
+   * Payment is deliberately not initiated yet.
+   *
+   * Next, we will connect this page to separate SangPoint endpoints
+   * on Render. The backend must:
+   * 1. Determine the price from the package ID.
+   * 2. Initiate the STK Push.
+   * 3. Verify Safaricom's payment callback.
+   * 4. Prevent duplicate payment/access processing.
+   * 5. Authorize the customer's MikroTik HotSpot session.
+   *
+   * Never trust browser-side payment success and never put Daraja
+   * consumer secrets or passkeys in frontend files.
+   */
+
+  setStatus(
+    "Your package is KSh " + selectedPackage.amount +
+    " for " + selectedPackage.name +
+    ". M-Pesa is not connected yet. The SangPoint backend and " +
+    "MikroTik access integration must be configured first.",
+    true
+  );
 });
