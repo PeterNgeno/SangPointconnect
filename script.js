@@ -8,6 +8,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const payButton = document.getElementById('pay-button');
   const statusMessage = document.getElementById('status-message');
 
+  const API_BASE = 'https://perontips-backend.onrender.com';
+  const paymentEndpoint = `${API_BASE}/pay`;
+  const statusEndpoint = `${API_BASE}/status`;
+
   const packages = {
     'hour': {
       name: 'Hourly Package',
@@ -31,39 +35,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const paymentEndpoint =
-    'https://perontips-backend.onrender.com/pay';
-
-  const statusEndpoint =
-    'https://perontips-backend.onrender.com/status';
-
   let selectedPackage = null;
   let paymentInProgress = false;
   let pollingTimer = null;
   let paymentTimeout = null;
 
-  // Restore the saved phone number, if available.
   const savedPhone = localStorage.getItem('sangpointPhone');
   if (savedPhone) {
     phoneInput.value = savedPhone;
   }
 
-  // Display status messages.
   function showStatus(message, type = '') {
     statusMessage.textContent = message;
-
-    statusMessage.classList.remove(
-      'success',
-      'error',
-      'warning'
-    );
+    statusMessage.classList.remove('success', 'error', 'warning');
 
     if (type) {
       statusMessage.classList.add(type);
     }
   }
 
-  // Enable or disable the payment button.
   function updatePayButton() {
     payButton.disabled =
       !selectedPackage ||
@@ -71,7 +61,6 @@ document.addEventListener('DOMContentLoaded', () => {
       paymentInProgress;
   }
 
-  // Select a Wi-Fi package.
   packageCards.forEach(card => {
     card.addEventListener('click', () => {
       if (paymentInProgress) return;
@@ -90,20 +79,15 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       packageCards.forEach(item => {
-        const isSelected = item === card;
-
-        item.classList.toggle('selected', isSelected);
-        item.setAttribute(
-          'aria-pressed',
-          String(isSelected)
-        );
+        const active = item === card;
+        item.classList.toggle('selected', active);
+        item.setAttribute('aria-pressed', String(active));
       });
 
       selectedName.textContent =
         `${selected.name} (${selected.duration})`;
 
-      selectedPrice.textContent =
-        `KSh ${selected.amount}`;
+      selectedPrice.textContent = `KSh ${selected.amount}`;
 
       showStatus(
         'Package selected. Enter your M-Pesa number to continue.'
@@ -113,7 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Normalize Kenyan phone numbers for the backend.
   function normalizePhone(rawPhone) {
     let phone = rawPhone.replace(/[\s\-()]/g, '');
 
@@ -123,26 +106,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (/^0[17]\d{8}$/.test(phone)) {
       phone = '254' + phone.slice(1);
-    }
-
-    if (/^[17]\d{8}$/.test(phone)) {
+    } else if (/^[17]\d{8}$/.test(phone)) {
       phone = '254' + phone;
     }
 
-    if (!/^254[17]\d{8}$/.test(phone)) {
-      return null;
-    }
-
-    return phone;
+    return /^254[17]\d{8}$/.test(phone) ? phone : null;
   }
 
   phoneInput.addEventListener('input', () => {
-    if (!paymentInProgress) {
-      updatePayButton();
-    }
+    if (!paymentInProgress) updatePayButton();
   });
 
-  // Stop checking payment status.
   function stopPolling() {
     if (pollingTimer) {
       clearInterval(pollingTimer);
@@ -155,21 +129,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Finish the payment process.
   function finishPayment() {
     stopPolling();
-
     paymentInProgress = false;
-    payButton.querySelector('span').textContent =
-      'Continue to M-Pesa';
+
+    const buttonText = payButton.querySelector('span');
+    if (buttonText) buttonText.textContent = 'Continue to M-Pesa';
+    else payButton.textContent = 'Continue to M-Pesa';
 
     updatePayButton();
   }
 
-  // Check whether M-Pesa payment has been confirmed.
   function pollPaymentStatus(phone) {
-    const checkStatus = async () => {
-      if (!paymentInProgress) return;
+    let checking = false;
+
+    async function checkStatus() {
+      if (!paymentInProgress || checking) return;
+      checking = true;
 
       try {
         const response = await fetch(
@@ -177,22 +153,16 @@ document.addEventListener('DOMContentLoaded', () => {
         );
 
         if (!response.ok) {
-          return;
+          throw new Error(`Status check failed (${response.status}).`);
         }
 
         const data = await response.json();
 
-        if (
-          data.status === 'Success' ||
-          data.status === 'success'
-        ) {
+        if (data.status === 'Success' || data.status === 'success') {
           stopPolling();
 
           localStorage.setItem('sangpointPaid', 'true');
-          localStorage.setItem(
-            'sangpointPackage',
-            selectedPackage.id
-          );
+          localStorage.setItem('sangpointPackage', selectedPackage.id);
           localStorage.setItem(
             'sangpointAmount',
             String(selectedPackage.amount)
@@ -201,24 +171,15 @@ document.addEventListener('DOMContentLoaded', () => {
           finishPayment();
 
           showStatus(
-            'Payment confirmed! Your payment has been verified. ' +
-            'Internet access will be available once your Wi-Fi ' +
-            'access system activates your session.',
+            'Payment confirmed! Your M-Pesa payment was verified. ' +
+            'Wi-Fi access will start once the Wi-Fi access system ' +
+            'activates your session.',
             'success'
           );
-
-          return;
-        }
-
-        if (
-          data.status === 'Failed' ||
-          data.status === 'Cancelled' ||
-          data.status === 'Canceled' ||
-          data.status === 'failed' ||
-          data.status === 'cancelled' ||
-          data.status === 'canceled'
+        } else if (
+          ['Failed', 'Cancelled', 'Canceled', 'failed',
+           'cancelled', 'canceled'].includes(data.status)
         ) {
-          stopPolling();
           finishPayment();
 
           showStatus(
@@ -228,40 +189,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } catch (error) {
         console.error('Payment status check failed:', error);
+      } finally {
+        checking = false;
       }
-    };
+    }
 
     checkStatus();
-
     pollingTimer = setInterval(checkStatus, 3000);
 
     paymentTimeout = setTimeout(() => {
       if (!paymentInProgress) return;
 
-      stopPolling();
       finishPayment();
 
       showStatus(
-        'We could not confirm your payment in time. ' +
-        'Check your M-Pesa messages before trying again. ' +
-        'If you were charged, do not pay again until the ' +
-        'payment status has been checked.',
+        'We could not confirm your payment in time. Check your M-Pesa ' +
+        'messages before trying again. If you were charged, do not pay ' +
+        'again until the transaction has been checked.',
         'warning'
       );
     }, 120000);
   }
 
-  // Initiate the M-Pesa STK Push.
   paymentForm.addEventListener('submit', async event => {
     event.preventDefault();
 
     if (paymentInProgress) return;
 
     if (!selectedPackage) {
-      showStatus(
-        'Please select a Wi-Fi package first.',
-        'error'
-      );
+      showStatus('Please select a Wi-Fi package first.', 'error');
       return;
     }
 
@@ -272,7 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
         'Enter a valid Kenyan number, such as 0712345678 or 0112345678.',
         'error'
       );
-
       phoneInput.focus();
       return;
     }
@@ -282,12 +237,11 @@ document.addEventListener('DOMContentLoaded', () => {
     paymentInProgress = true;
     updatePayButton();
 
-    payButton.querySelector('span').textContent =
-      'Sending M-Pesa prompt...';
+    const buttonText = payButton.querySelector('span');
+    if (buttonText) buttonText.textContent = 'Sending M-Pesa prompt...';
+    else payButton.textContent = 'Sending M-Pesa prompt...';
 
-    showStatus(
-      'Please wait while we send the M-Pesa payment prompt to your phone.'
-    );
+    showStatus('Connecting to the payment service. Please wait...');
 
     try {
       const response = await fetch(paymentEndpoint, {
@@ -302,60 +256,53 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       let data = {};
-
       try {
         data = await response.json();
-      } catch (error) {
-        data = {};
-      }
+      } catch (_) {}
 
       if (!response.ok) {
         throw new Error(
           data.message ||
           data.error ||
-          'Could not initiate payment. Please try again.'
+          `Payment request failed (${response.status}).`
         );
       }
 
-      if (
-        data.status === 'Failed' ||
-        data.status === 'Cancelled' ||
-        data.status === 'Canceled' ||
-        data.status === 'failed' ||
-        data.status === 'cancelled' ||
-        data.status === 'canceled'
-      ) {
+      if (data.success === false ||
+          ['Failed', 'Cancelled', 'Canceled', 'failed',
+           'cancelled', 'canceled'].includes(data.status)) {
         throw new Error(
           data.message ||
           data.error ||
-          'The payment request was not accepted.'
+          'The payment service rejected the request.'
         );
       }
 
-      payButton.querySelector('span').textContent =
-        'Waiting for payment...';
+      const buttonTextAfter = payButton.querySelector('span');
+      if (buttonTextAfter) {
+        buttonTextAfter.textContent = 'Waiting for payment...';
+      } else {
+        payButton.textContent = 'Waiting for payment...';
+      }
 
       showStatus(
-        'Payment request sent. Enter your M-Pesa PIN on your phone ' +
-        'to approve KSh ' + selectedPackage.amount +
-        '. Do not share your PIN with anyone.'
+        'The server accepted the request. If the M-Pesa prompt arrives, ' +
+        'enter your PIN to approve KSh ' + selectedPackage.amount + '.'
       );
 
       pollPaymentStatus(phone);
 
     } catch (error) {
       console.error('Payment initiation failed:', error);
-
       finishPayment();
 
       showStatus(
         error.message ||
-        'Unable to start payment. Check your connection and try again.',
+        'Unable to start payment. Please check your connection.',
         'error'
       );
     }
   });
 
-  // Initial page state.
   updatePayButton();
 });
