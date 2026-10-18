@@ -1,121 +1,307 @@
-document.addEventListener('DOMContentLoaded', async () => {
-  let section = parseInt(localStorage.getItem('quizSection')) || 1;
-  let isRetry = localStorage.getItem('quizRetry') === 'true';
-  let phone = localStorage.getItem('quizPhone') || '';
-  const contentDiv = document.getElementById('content');
 
-  async function getAmountFromSheet(section) {
-    try {
-      const sheetURL =
-        'https://docs.google.com/spreadsheets/d/1Ce3AZo4boaU91Enar8EwHN10ep9_lqHgHewSXHA0avo/gviz/tq?sheet=sheet1&tqx=out:json';
-      const res = await fetch(sheetURL);
-      const text = await res.text();
-      const json = JSON.parse(text.substr(47).slice(0, -2));
-      const rows = json.table.rows;
-      if (!rows || !rows.length) return 5;
+document.addEventListener("DOMContentLoaded", () => {
+  "use strict";
 
-      const colStart = (section - 1) * 5;
-      const amount = parseInt(rows[0].c[colStart + 3]?.v) || 5;
-      return amount;
-    } catch (err) {
-      console.error(err);
-      return 5;
+  // Existing Render server
+  const API_BASE = "https://perontips-backend.onrender.com";
+
+  // SangPoint Wi-Fi packages
+  const PACKAGES = {
+    "hour": {
+      id: "hour",
+      name: "1 hour",
+      amount: 5
+    },
+    "ten-hours": {
+      id: "ten-hours",
+      name: "10 hours",
+      amount: 20
+    },
+    "five-days": {
+      id: "five-days",
+      name: "5 days",
+      amount: 100
+    },
+    "six-days": {
+      id: "six-days",
+      name: "6 days",
+      amount: 120
+    }
+  };
+
+  const packageButtons = document.querySelectorAll(".package-card");
+  const selectedName = document.getElementById("selected-name");
+  const selectedPrice = document.getElementById("selected-price");
+  const phoneInput = document.getElementById("phone");
+  const payButton = document.getElementById("pay-button");
+  const paymentForm = document.getElementById("payment-form");
+  const statusMessage = document.getElementById("status-message");
+
+  let selectedPackage = null;
+  let pollingTimer = null;
+  let requestInProgress = false;
+
+  function setStatus(message, type = "") {
+    statusMessage.textContent = message;
+    statusMessage.className = "notice";
+
+    if (type) {
+      statusMessage.classList.add(type);
     }
   }
 
-  function showSectionSelector() {
-    contentDiv.innerHTML = `
-      <h2 style="font-size:26px;">Select Quiz Section</h2>
-      <select id="section-select" style="width:100%; padding:20px; font-size:22px; margin-bottom:20px;">
-        ${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">Section ${String.fromCharCode(65 + i)}</option>`).join('')}
-      </select>
-      <button id="select-btn" style="width:100%; padding:20px; font-size:22px; background:#2ecc71; color:white; border:none; border-radius:6px; cursor:pointer;">Continue</button>
-    `;
+  function normalizeKenyanPhone(value) {
+    let phone = value.trim().replace(/[\s()-]/g, "");
 
-    document.getElementById('select-btn').onclick = () => {
-      section = parseInt(document.getElementById('section-select').value);
-      localStorage.setItem('quizSection', section);
-      showPayment();
-    };
+    if (phone.startsWith("+")) {
+      phone = phone.substring(1);
+    }
+
+    if (/^0[17]\d{8}$/.test(phone)) {
+      return "254" + phone.substring(1);
+    }
+
+    if (/^254[17]\d{8}$/.test(phone)) {
+      return phone;
+    }
+
+    if (/^[17]\d{8}$/.test(phone)) {
+      return "254" + phone;
+    }
+
+    return null;
   }
 
-  async function showPayment() {
-    const amount = await getAmountFromSheet(section);
-    contentDiv.innerHTML = `
-      <h2>Section ${String.fromCharCode(64 + section)}</h2>
-      <p><b>Amount:</b> Ksh ${amount}</p>
-      <input id="phone-input" placeholder="07XXXXXXXX" value="${phone}" style="width:100%; padding:22px; font-size:22px; margin-bottom:15px;">
-      <button id="pay-btn" style="width:100%; padding:22px; font-size:22px; background:#27ae60; color:white; border:none; border-radius:6px; cursor:pointer;">Pay Now</button>
-      <div id="payment-status" style="margin-top:15px; font-size:18px;"></div>
-    `;
-    document.getElementById('pay-btn').onclick = initiatePayment.bind(null, amount);
+  function stopPolling() {
+    if (pollingTimer !== null) {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    }
   }
 
-  async function initiatePayment(amount) {
-    const raw = document.getElementById('phone-input').value.trim();
-    if (!raw) return alert('Enter phone number');
-    phone = raw.startsWith('07') ? '254' + raw.slice(1) : raw;
-    localStorage.setItem('quizPhone', raw);
+  // Select a package
+  packageButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (requestInProgress) return;
 
-    showLoader("Wait… enter M-Pesa PIN on your phone");
+      const chosen = PACKAGES[button.dataset.package];
+      if (!chosen) return;
 
-    await fetch('https://perontips-backend.onrender.com/pay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, amount })
+      selectedPackage = chosen;
+
+      packageButtons.forEach((item) => {
+        const active = item === button;
+        item.classList.toggle("selected", active);
+        item.setAttribute("aria-pressed", String(active));
+      });
+
+      selectedName.textContent = chosen.name;
+      selectedPrice.textContent = "KSh " + chosen.amount;
+
+      payButton.disabled = false;
+
+      setStatus(
+        "Selected " + chosen.name +
+        " for KSh " + chosen.amount +
+        ". Enter your M-Pesa number to continue."
+      );
     });
+  });
 
-    pollPaymentStatus();
-  }
+  // Request a payment
+  paymentForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
 
-  function pollPaymentStatus() {
-    const interval = setInterval(async () => {
-      const res = await fetch(`https://perontips-backend.onrender.com/status?phone=${phone}`);
-      const data = await res.json();
-      if (data.status === 'Success') {
-        clearInterval(interval);
-        localStorage.setItem('quizPaid', 'true');
-        localStorage.setItem('quizExpiry', Date.now() + 24*60*60*1000);
-        showLoader("Payment confirmed! Don’t leave this page. Redirecting...");
-        setTimeout(() => window.location.href='quiz.html', 3000);
+    if (requestInProgress) return;
+
+    if (!selectedPackage) {
+      setStatus("Please select a package first.", "error");
+      return;
+    }
+
+    const phone = normalizeKenyanPhone(phoneInput.value);
+
+    if (!phone) {
+      setStatus(
+        "Enter a valid Kenyan number, such as 0712345678.",
+        "error"
+      );
+      phoneInput.focus();
+      return;
+    }
+
+    requestInProgress = true;
+    payButton.disabled = true;
+    phoneInput.disabled = true;
+
+    setStatus("Connecting to the SangPoint payment service...");
+
+    try {
+      /*
+       * This route must be implemented on Render first.
+       * The server must validate the package ID and determine
+       * the amount itself; it must not trust a browser-supplied price.
+       */
+      const response = await fetch(API_BASE + "/sangpoint/pay", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          phone: phone,
+          packageId: selectedPackage.id
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data.success !== true) {
+        throw new Error(
+          data.error ||
+          data.message ||
+          "The SangPoint payment service is not ready or rejected the request."
+        );
       }
-    }, 3000);
-  }
 
-  window.showLoader = function(message="Processing payment...") {
-    contentDiv.innerHTML = `
-      <div style="text-align:center; padding:40px;">
-        <img src="16cc5661a9b0e90_file_00000000862461f9aa3ca12f21fda879_wm.png" style="width:80px; animation:spin 2s linear infinite;">
-        <p id="loader-text" style="margin-top:20px; font-size:18px; font-weight:bold;">${message}</p>
-      </div>
-      <style>
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      </style>
-    `;
+      const checkoutId = data.checkoutId;
 
-    const loaderMessages = [
-      "Wait… enter M-Pesa PIN on your phone",
-      "Confirming payment…",
-      "Payment received",
-      "Don’t leave this page",
-      "Redirecting you to questions…"
-    ];
+      if (!checkoutId) {
+        throw new Error(
+          "The server did not return a payment reference."
+        );
+      }
 
-    let msgIndex=0, charIndex=0;
-    if (window.typingTimer) clearInterval(window.typingTimer);
+      setStatus(
+        "M-Pesa prompt requested. Check your phone and enter your PIN only in the official M-Pesa prompt."
+      );
 
-    function typeMessage() {
-      const textEl = document.getElementById('loader-text');
-      const message = loaderMessages[msgIndex];
-      if (charIndex <= message.length) {
-        textEl.innerHTML = message.substring(0,charIndex)+'<span class="cursor">|</span>';
-        charIndex++;
-      } else {
-        setTimeout(()=>{charIndex=0; msgIndex=(msgIndex+1)%loaderMessages.length;},1200);
+      startPolling(checkoutId);
+
+    } catch (error) {
+      console.error("SangPoint payment request error:", error);
+
+      setStatus(
+        error.message ||
+        "Unable to connect to the payment service. Please try again later.",
+        "error"
+      );
+
+      requestInProgress = false;
+      payButton.disabled = false;
+      phoneInput.disabled = false;
+    }
+  });
+
+  // Check the status of this specific payment
+  function startPolling(checkoutId) {
+    stopPolling();
+
+    let attempts = 0;
+    const maxAttempts = 60;
+
+    async function checkStatus() {
+      attempts++;
+
+      try {
+        const url =
+          API_BASE +
+          "/sangpoint/status?checkoutId=" +
+          encodeURIComponent(checkoutId);
+
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "Accept": "application/json"
+          }
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error("Could not check payment status.");
+        }
+
+        if (data.status === "Success") {
+          stopPolling();
+
+          setStatus(
+            "Payment confirmed. Your SangPoint package is being activated.",
+            "success"
+          );
+
+          /*
+           * The server should return accessActivated: true only
+           * after it has successfully authorized the MikroTik
+           * HotSpot customer session.
+           */
+          if (data.accessActivated === true) {
+            setStatus(
+              "Payment confirmed and internet access activated. Enjoy SangPoint Connect!",
+              "success"
+            );
+          } else {
+            setStatus(
+              "Payment confirmed, but internet activation is still pending. Please do not pay again. Contact SangPoint support if access does not start.",
+              "error"
+            );
+          }
+
+          requestInProgress = false;
+          phoneInput.disabled = false;
+          payButton.disabled = false;
+          return;
+        }
+
+        if (data.status === "Failed") {
+          stopPolling();
+
+          setStatus(
+            data.resultDesc ||
+            "Payment was not completed. You can try again.",
+            "error"
+          );
+
+          requestInProgress = false;
+          phoneInput.disabled = false;
+          payButton.disabled = false;
+          return;
+        }
+
+        setStatus(
+          "Waiting for M-Pesa confirmation... Please check your phone. Do not submit another payment."
+        );
+
+      } catch (error) {
+        console.error("SangPoint status check error:", error);
+
+        setStatus(
+          "Unable to verify the payment status right now. Please wait and do not pay again."
+        );
+      }
+
+      if (attempts >= maxAttempts) {
+        stopPolling();
+
+        setStatus(
+          "Automatic checking has stopped. Your payment may still be processing. Do not pay again until the transaction status is checked."
+        );
+
+        requestInProgress = false;
+        phoneInput.disabled = false;
+        payButton.disabled = false;
       }
     }
-    window.typingTimer = setInterval(typeMessage,80);
+
+    checkStatus();
+    pollingTimer = setInterval(checkStatus, 3000);
   }
 
-  showSectionSelector();
+  // Initial page state
+  packageButtons.forEach((button) => {
+    button.setAttribute("aria-pressed", "false");
+  });
+
+  payButton.disabled = true;
+
+  setStatus("Choose a Wi-Fi package to continue.");
 });
