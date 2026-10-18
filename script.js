@@ -1,307 +1,361 @@
 
-document.addEventListener("DOMContentLoaded", () => {
-  "use strict";
+document.addEventListener('DOMContentLoaded', () => {
+  const packageCards = document.querySelectorAll('.package-card');
+  const selectedName = document.getElementById('selected-name');
+  const selectedPrice = document.getElementById('selected-price');
+  const paymentForm = document.getElementById('payment-form');
+  const phoneInput = document.getElementById('phone');
+  const payButton = document.getElementById('pay-button');
+  const statusMessage = document.getElementById('status-message');
 
-  // Existing Render server
-  const API_BASE = "https://perontips-backend.onrender.com";
-
-  // SangPoint Wi-Fi packages
-  const PACKAGES = {
-    "hour": {
-      id: "hour",
-      name: "1 hour",
-      amount: 5
+  const packages = {
+    'hour': {
+      name: 'Hourly Package',
+      amount: 5,
+      duration: '1 hour'
     },
-    "ten-hours": {
-      id: "ten-hours",
-      name: "10 hours",
-      amount: 20
+    'ten-hours': {
+      name: '10-Hour Package',
+      amount: 20,
+      duration: '10 hours'
     },
-    "five-days": {
-      id: "five-days",
-      name: "5 days",
-      amount: 100
+    'five-days': {
+      name: '5-Day Package',
+      amount: 100,
+      duration: '5 days'
     },
-    "six-days": {
-      id: "six-days",
-      name: "6 days",
-      amount: 120
+    'six-days': {
+      name: '6-Day Package',
+      amount: 120,
+      duration: '6 days'
     }
   };
 
-  const packageButtons = document.querySelectorAll(".package-card");
-  const selectedName = document.getElementById("selected-name");
-  const selectedPrice = document.getElementById("selected-price");
-  const phoneInput = document.getElementById("phone");
-  const payButton = document.getElementById("pay-button");
-  const paymentForm = document.getElementById("payment-form");
-  const statusMessage = document.getElementById("status-message");
+  const paymentEndpoint =
+    'https://perontips-backend.onrender.com/pay';
+
+  const statusEndpoint =
+    'https://perontips-backend.onrender.com/status';
 
   let selectedPackage = null;
+  let paymentInProgress = false;
   let pollingTimer = null;
-  let requestInProgress = false;
+  let paymentTimeout = null;
 
-  function setStatus(message, type = "") {
+  // Restore the saved phone number, if available.
+  const savedPhone = localStorage.getItem('sangpointPhone');
+  if (savedPhone) {
+    phoneInput.value = savedPhone;
+  }
+
+  // Display status messages.
+  function showStatus(message, type = '') {
     statusMessage.textContent = message;
-    statusMessage.className = "notice";
+
+    statusMessage.classList.remove(
+      'success',
+      'error',
+      'warning'
+    );
 
     if (type) {
       statusMessage.classList.add(type);
     }
   }
 
-  function normalizeKenyanPhone(value) {
-    let phone = value.trim().replace(/[\s()-]/g, "");
-
-    if (phone.startsWith("+")) {
-      phone = phone.substring(1);
-    }
-
-    if (/^0[17]\d{8}$/.test(phone)) {
-      return "254" + phone.substring(1);
-    }
-
-    if (/^254[17]\d{8}$/.test(phone)) {
-      return phone;
-    }
-
-    if (/^[17]\d{8}$/.test(phone)) {
-      return "254" + phone;
-    }
-
-    return null;
+  // Enable or disable the payment button.
+  function updatePayButton() {
+    payButton.disabled =
+      !selectedPackage ||
+      !phoneInput.value.trim() ||
+      paymentInProgress;
   }
 
-  function stopPolling() {
-    if (pollingTimer !== null) {
-      clearInterval(pollingTimer);
-      pollingTimer = null;
-    }
-  }
+  // Select a Wi-Fi package.
+  packageCards.forEach(card => {
+    card.addEventListener('click', () => {
+      if (paymentInProgress) return;
 
-  // Select a package
-  packageButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      if (requestInProgress) return;
+      const packageId = card.dataset.package;
+      const selected = packages[packageId];
 
-      const chosen = PACKAGES[button.dataset.package];
-      if (!chosen) return;
+      if (!selected) {
+        showStatus('This package is unavailable.', 'error');
+        return;
+      }
 
-      selectedPackage = chosen;
+      selectedPackage = {
+        id: packageId,
+        ...selected
+      };
 
-      packageButtons.forEach((item) => {
-        const active = item === button;
-        item.classList.toggle("selected", active);
-        item.setAttribute("aria-pressed", String(active));
+      packageCards.forEach(item => {
+        const isSelected = item === card;
+
+        item.classList.toggle('selected', isSelected);
+        item.setAttribute(
+          'aria-pressed',
+          String(isSelected)
+        );
       });
 
-      selectedName.textContent = chosen.name;
-      selectedPrice.textContent = "KSh " + chosen.amount;
+      selectedName.textContent =
+        `${selected.name} (${selected.duration})`;
 
-      payButton.disabled = false;
+      selectedPrice.textContent =
+        `KSh ${selected.amount}`;
 
-      setStatus(
-        "Selected " + chosen.name +
-        " for KSh " + chosen.amount +
-        ". Enter your M-Pesa number to continue."
+      showStatus(
+        'Package selected. Enter your M-Pesa number to continue.'
       );
+
+      updatePayButton();
     });
   });
 
-  // Request a payment
-  paymentForm.addEventListener("submit", async (event) => {
+  // Normalize Kenyan phone numbers for the backend.
+  function normalizePhone(rawPhone) {
+    let phone = rawPhone.replace(/[\s\-()]/g, '');
+
+    if (phone.startsWith('+254')) {
+      phone = phone.slice(1);
+    }
+
+    if (/^0[17]\d{8}$/.test(phone)) {
+      phone = '254' + phone.slice(1);
+    }
+
+    if (/^[17]\d{8}$/.test(phone)) {
+      phone = '254' + phone;
+    }
+
+    if (!/^254[17]\d{8}$/.test(phone)) {
+      return null;
+    }
+
+    return phone;
+  }
+
+  phoneInput.addEventListener('input', () => {
+    if (!paymentInProgress) {
+      updatePayButton();
+    }
+  });
+
+  // Stop checking payment status.
+  function stopPolling() {
+    if (pollingTimer) {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    }
+
+    if (paymentTimeout) {
+      clearTimeout(paymentTimeout);
+      paymentTimeout = null;
+    }
+  }
+
+  // Finish the payment process.
+  function finishPayment() {
+    stopPolling();
+
+    paymentInProgress = false;
+    payButton.querySelector('span').textContent =
+      'Continue to M-Pesa';
+
+    updatePayButton();
+  }
+
+  // Check whether M-Pesa payment has been confirmed.
+  function pollPaymentStatus(phone) {
+    const checkStatus = async () => {
+      if (!paymentInProgress) return;
+
+      try {
+        const response = await fetch(
+          `${statusEndpoint}?phone=${encodeURIComponent(phone)}`
+        );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+
+        if (
+          data.status === 'Success' ||
+          data.status === 'success'
+        ) {
+          stopPolling();
+
+          localStorage.setItem('sangpointPaid', 'true');
+          localStorage.setItem(
+            'sangpointPackage',
+            selectedPackage.id
+          );
+          localStorage.setItem(
+            'sangpointAmount',
+            String(selectedPackage.amount)
+          );
+
+          finishPayment();
+
+          showStatus(
+            'Payment confirmed! Your payment has been verified. ' +
+            'Internet access will be available once your Wi-Fi ' +
+            'access system activates your session.',
+            'success'
+          );
+
+          return;
+        }
+
+        if (
+          data.status === 'Failed' ||
+          data.status === 'Cancelled' ||
+          data.status === 'Canceled' ||
+          data.status === 'failed' ||
+          data.status === 'cancelled' ||
+          data.status === 'canceled'
+        ) {
+          stopPolling();
+          finishPayment();
+
+          showStatus(
+            'Payment was not completed. Please try again.',
+            'error'
+          );
+        }
+      } catch (error) {
+        console.error('Payment status check failed:', error);
+      }
+    };
+
+    checkStatus();
+
+    pollingTimer = setInterval(checkStatus, 3000);
+
+    paymentTimeout = setTimeout(() => {
+      if (!paymentInProgress) return;
+
+      stopPolling();
+      finishPayment();
+
+      showStatus(
+        'We could not confirm your payment in time. ' +
+        'Check your M-Pesa messages before trying again. ' +
+        'If you were charged, do not pay again until the ' +
+        'payment status has been checked.',
+        'warning'
+      );
+    }, 120000);
+  }
+
+  // Initiate the M-Pesa STK Push.
+  paymentForm.addEventListener('submit', async event => {
     event.preventDefault();
 
-    if (requestInProgress) return;
+    if (paymentInProgress) return;
 
     if (!selectedPackage) {
-      setStatus("Please select a package first.", "error");
+      showStatus(
+        'Please select a Wi-Fi package first.',
+        'error'
+      );
       return;
     }
 
-    const phone = normalizeKenyanPhone(phoneInput.value);
+    const phone = normalizePhone(phoneInput.value.trim());
 
     if (!phone) {
-      setStatus(
-        "Enter a valid Kenyan number, such as 0712345678.",
-        "error"
+      showStatus(
+        'Enter a valid Kenyan number, such as 0712345678 or 0112345678.',
+        'error'
       );
+
       phoneInput.focus();
       return;
     }
 
-    requestInProgress = true;
-    payButton.disabled = true;
-    phoneInput.disabled = true;
+    localStorage.setItem('sangpointPhone', phoneInput.value.trim());
 
-    setStatus("Connecting to the SangPoint payment service...");
+    paymentInProgress = true;
+    updatePayButton();
+
+    payButton.querySelector('span').textContent =
+      'Sending M-Pesa prompt...';
+
+    showStatus(
+      'Please wait while we send the M-Pesa payment prompt to your phone.'
+    );
 
     try {
-      /*
-       * This route must be implemented on Render first.
-       * The server must validate the package ID and determine
-       * the amount itself; it must not trust a browser-supplied price.
-       */
-      const response = await fetch(API_BASE + "/sangpoint/pay", {
-        method: "POST",
+      const response = await fetch(paymentEndpoint, {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           phone: phone,
-          packageId: selectedPackage.id
+          amount: selectedPackage.amount
         })
       });
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || data.success !== true) {
-        throw new Error(
-          data.error ||
-          data.message ||
-          "The SangPoint payment service is not ready or rejected the request."
-        );
-      }
-
-      const checkoutId = data.checkoutId;
-
-      if (!checkoutId) {
-        throw new Error(
-          "The server did not return a payment reference."
-        );
-      }
-
-      setStatus(
-        "M-Pesa prompt requested. Check your phone and enter your PIN only in the official M-Pesa prompt."
-      );
-
-      startPolling(checkoutId);
-
-    } catch (error) {
-      console.error("SangPoint payment request error:", error);
-
-      setStatus(
-        error.message ||
-        "Unable to connect to the payment service. Please try again later.",
-        "error"
-      );
-
-      requestInProgress = false;
-      payButton.disabled = false;
-      phoneInput.disabled = false;
-    }
-  });
-
-  // Check the status of this specific payment
-  function startPolling(checkoutId) {
-    stopPolling();
-
-    let attempts = 0;
-    const maxAttempts = 60;
-
-    async function checkStatus() {
-      attempts++;
+      let data = {};
 
       try {
-        const url =
-          API_BASE +
-          "/sangpoint/status?checkoutId=" +
-          encodeURIComponent(checkoutId);
-
-        const response = await fetch(url, {
-          method: "GET",
-          headers: {
-            "Accept": "application/json"
-          }
-        });
-
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          throw new Error("Could not check payment status.");
-        }
-
-        if (data.status === "Success") {
-          stopPolling();
-
-          setStatus(
-            "Payment confirmed. Your SangPoint package is being activated.",
-            "success"
-          );
-
-          /*
-           * The server should return accessActivated: true only
-           * after it has successfully authorized the MikroTik
-           * HotSpot customer session.
-           */
-          if (data.accessActivated === true) {
-            setStatus(
-              "Payment confirmed and internet access activated. Enjoy SangPoint Connect!",
-              "success"
-            );
-          } else {
-            setStatus(
-              "Payment confirmed, but internet activation is still pending. Please do not pay again. Contact SangPoint support if access does not start.",
-              "error"
-            );
-          }
-
-          requestInProgress = false;
-          phoneInput.disabled = false;
-          payButton.disabled = false;
-          return;
-        }
-
-        if (data.status === "Failed") {
-          stopPolling();
-
-          setStatus(
-            data.resultDesc ||
-            "Payment was not completed. You can try again.",
-            "error"
-          );
-
-          requestInProgress = false;
-          phoneInput.disabled = false;
-          payButton.disabled = false;
-          return;
-        }
-
-        setStatus(
-          "Waiting for M-Pesa confirmation... Please check your phone. Do not submit another payment."
-        );
-
+        data = await response.json();
       } catch (error) {
-        console.error("SangPoint status check error:", error);
+        data = {};
+      }
 
-        setStatus(
-          "Unable to verify the payment status right now. Please wait and do not pay again."
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+          data.error ||
+          'Could not initiate payment. Please try again.'
         );
       }
 
-      if (attempts >= maxAttempts) {
-        stopPolling();
-
-        setStatus(
-          "Automatic checking has stopped. Your payment may still be processing. Do not pay again until the transaction status is checked."
+      if (
+        data.status === 'Failed' ||
+        data.status === 'Cancelled' ||
+        data.status === 'Canceled' ||
+        data.status === 'failed' ||
+        data.status === 'cancelled' ||
+        data.status === 'canceled'
+      ) {
+        throw new Error(
+          data.message ||
+          data.error ||
+          'The payment request was not accepted.'
         );
-
-        requestInProgress = false;
-        phoneInput.disabled = false;
-        payButton.disabled = false;
       }
+
+      payButton.querySelector('span').textContent =
+        'Waiting for payment...';
+
+      showStatus(
+        'Payment request sent. Enter your M-Pesa PIN on your phone ' +
+        'to approve KSh ' + selectedPackage.amount +
+        '. Do not share your PIN with anyone.'
+      );
+
+      pollPaymentStatus(phone);
+
+    } catch (error) {
+      console.error('Payment initiation failed:', error);
+
+      finishPayment();
+
+      showStatus(
+        error.message ||
+        'Unable to start payment. Check your connection and try again.',
+        'error'
+      );
     }
-
-    checkStatus();
-    pollingTimer = setInterval(checkStatus, 3000);
-  }
-
-  // Initial page state
-  packageButtons.forEach((button) => {
-    button.setAttribute("aria-pressed", "false");
   });
 
-  payButton.disabled = true;
-
-  setStatus("Choose a Wi-Fi package to continue.");
+  // Initial page state.
+  updatePayButton();
 });
